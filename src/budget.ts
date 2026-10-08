@@ -34,8 +34,9 @@ export const sortBookings = (list: Booking[]) =>
 // ── Year statistics ─────────────────────────────────────────────────────────
 export interface LineStats {
   months: number[];      // 12 sums (index 0 = Januar)
-  total: number;
-  avg: number;           // total / booked months
+  total: number;         // all 12 months (also months prepared ahead)
+  booked: number;        // the booked months only
+  avg: number;           // booked / booked months
   budgetMonth: number;
   budgetYear: number;
   remaining: number;     // budgetYear − total  (sheet: "Überschuss")
@@ -53,6 +54,7 @@ export interface YearStats {
   surplus: number[];     // income − expense per month
   cumulative: number[];  // running surplus
   surplusTotal: number;
+  surplusBooked: number; // booked months only
   surplusBudgetMonth: number;
   surplusBudgetYear: number;
   surplusForecast: number;
@@ -71,12 +73,13 @@ export function bookedMonths(year: YearData, today = new Date()): number {
 
 function line(months: number[], budgetMonth: number, n: number): LineStats {
   const total = months.reduce((a, b) => a + b, 0);
-  const avg = n > 0 ? total / n : 0;
+  const booked = months.slice(0, n).reduce((a, b) => a + b, 0);
+  const avg = n > 0 ? booked / n : 0;
   const budgetYear = budgetMonth * 12;
   const forecast = avg * 12;
   const deviation = budgetYear - forecast;
   return {
-    months, total, avg, budgetMonth, budgetYear,
+    months, total, booked, avg, budgetMonth, budgetYear,
     remaining: budgetYear - total, forecast, deviation,
     deviationPct: budgetYear !== 0 ? deviation * 100 / budgetYear : null,
   };
@@ -112,11 +115,13 @@ export function yearStats(year: YearData, categories: Category[], today = new Da
   const expense = line(agg.expense.months, agg.expense.budget, n);
   const income = line(agg.income.months, agg.income.budget, n);
   const surplus = income.months.map((v, i) => v - expense.months[i]);
+  const surplusBooked = income.booked - expense.booked;
   const cumulative: number[] = [];
   surplus.reduce((acc, v, i) => { cumulative[i] = acc + v; return acc + v; }, 0);
   return {
     year: year.year, bookedMonths: n, cats, expense, income, surplus, cumulative,
     surplusTotal: income.total - expense.total,
+    surplusBooked,
     surplusBudgetMonth: income.budgetMonth - expense.budgetMonth,
     surplusBudgetYear: income.budgetYear - expense.budgetYear,
     surplusForecast: income.forecast - expense.forecast,

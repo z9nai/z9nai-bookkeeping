@@ -14,6 +14,7 @@ export interface Booking {
   categoryId: string;
   amount: number;     // CHF, positive within its kind; negative = refund / correction
   text: string;
+  recurringId?: string; // generated from a recurring booking (Fixbuchung)
 }
 
 // One file per year: budget-YYYY.json
@@ -22,6 +23,34 @@ export interface YearData {
   budget: Record<string, number>; // categoryId → CHF per month
   bookings: Booking[];
   months?: number;                // months to divide by for Ø and Hochrechnung (sheet cell B19); default: see bookedMonths()
+  balances?: Record<string, Record<string, number>>; // "YYYY-MM" → accountId → bank balance at month end (Abgleich)
 }
+
+// ── Settings (settings.json) ────────────────────────────────────────────────
+export interface Account {
+  id: string;
+  name: string;
+}
+
+// Monthly fixed booking, e.g. a depreciation: the same amount every month from
+// `from` until `to`, or until `total` is written off.
+export interface Recurring {
+  id: string;
+  name: string;
+  categoryId: string;
+  amount: number;      // CHF per month
+  text: string;
+  from: string;        // "YYYY-MM"
+  to?: string;         // "YYYY-MM" (inclusive); omitted = open end or derived from total
+  total?: number;      // total to write off (Abschreibung) → the last month books the remainder
+  skip?: string[];     // months ("YYYY-MM") left out on purpose
+}
+
+export interface Settings {
+  accounts: Account[];
+  recurring: Recurring[];
+}
+
+export const EMPTY_SETTINGS: Settings = { accounts: [], recurring: [] };
 
 export const EMPTY_YEAR = (year: number): YearData => ({ year, budget: {}, bookings: [] });

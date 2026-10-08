@@ -46,8 +46,8 @@ export default function YearView({ year, setYear, onOpenBookings }: Props) {
   const [hoverCol, setHoverCol] = useState<number | null>(null);
 
   const monthCls = (m: number) => {
-    const future = year > cy || (year === cy && m > cm);
-    return `${future ? t.faint : ''} ${year === cy && m === cm ? 'font-semibold' : ''}`;
+    const unbooked = m > st.bookedMonths;
+    return `${unbooked ? t.faint : ''} ${year === cy && m === cm ? 'font-semibold' : ''}`;
   };
   const cell = (v: number, extra = '') => (
     <td className={`text-right px-2 py-1 tabular-nums ${extra} ${Math.round(v) === 0 ? t.faint : ''}`}>{Math.round(v) === 0 ? '–' : fmtChf(v)}</td>

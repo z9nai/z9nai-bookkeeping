@@ -34,3 +34,4 @@ pnpm-debug.log*
 
 # Coverage
 coverage/
+public/testdata/

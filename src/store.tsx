@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { Booking, Category, EMPTY_YEAR, YearData } from './types';
+import { Booking, Category, EMPTY_SETTINGS, EMPTY_YEAR, Settings, YearData } from './types';
+import { missingBookings, ymToday } from './recurring';
 import { GitConfig, GitFile, commitFiles, loadGitConfig, saveGitConfig } from './git';
 import { sortBookings, yearOf } from './budget';
 
@@ -15,6 +16,7 @@ export interface GitStatus {
 interface StoreCtx {
   categories: Category[];
   years: Record<number, YearData>;
+  settings: Settings;
   dirHandle: FileSystemDirectoryHandle | null;
   savedHandleAvailable: boolean;
   isDark: boolean;
@@ -24,6 +26,9 @@ interface StoreCtx {
   setBudget: (year: number, categoryId: string, amount: number) => void;
   copyBudget: (fromYear: number, toYear: number) => void;
   setMonths: (year: number, months: number | null) => void;
+  setSettings: (fn: (s: Settings) => Settings) => void;
+  setBalance: (ym: string, accountId: string, value: number | null) => void;
+  skipRecurring: (recurringId: string, ym: string) => void;
   addBooking: (b: Booking) => void;
   updateBooking: (b: Booking) => void;
   deleteBooking: (id: string) => void;
@@ -39,9 +44,10 @@ interface StoreCtx {
 }
 
 const GIT_COMMIT_DELAY_MS = 10_000;
-const DATA_FILE = /^(budget-\d{4}|categories)\.json$/;
+const DATA_FILE = /^(budget-\d{4}|categories|settings)\.json$/;
 const YEAR_FILE = /^budget-(\d{4})\.json$/;
 const CATEGORIES_FILE = 'categories.json';
+const SETTINGS_FILE = 'settings.json';
 const MAX_BACKUPS_PER_FILE = 30;
 const BACKUP_INTERVAL_MS = 60 * 60 * 1000;
 const THEME_KEY = 'z9nai-bookkeeping-theme';
@@ -91,7 +97,11 @@ async function backupFile(dir: FileSystemDirectoryHandle, name: string) {
 function normalizeYear(raw: unknown, year: number): YearData {
   const o = (raw ?? {}) as Partial<YearData>;
   if (o.bookings != null && !Array.isArray(o.bookings)) throw new Error('Datei hat kein gültiges "bookings"-Feld');
-  return { year, budget: o.budget ?? {}, bookings: sortBookings(o.bookings ?? []), ...(o.months != null ? { months: o.months } : {}) };
+  return {
+    year, budget: o.budget ?? {}, bookings: sortBookings(o.bookings ?? []),
+    ...(o.months != null ? { months: o.months } : {}),
+    ...(o.balances ? { balances: o.balances } : {}),
+  };
 }
 
 // ── IndexedDB: persist the directory handle ─────────────────────────────────
@@ -136,6 +146,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const savedHandleRef = useRef<FileSystemDirectoryHandle | null>(null);
   const [categories, setCategoriesState] = useState<Category[]>([]);
   const [years, setYearsState] = useState<Record<number, YearData>>({});
+  const [settings, setSettingsState] = useState<Settings>(EMPTY_SETTINGS);
+  const settingsRef = useRef<Settings>(EMPTY_SETTINGS);
   const [ioError, setIoError] = useState<string | null>(null);
   const [lastCategoryId, setLastCategoryId] = useState<string | null>(() => { try { return localStorage.getItem(MRU_KEY); } catch { return null; } });
   const dirRef = useRef<FileSystemDirectoryHandle | null>(null);
@@ -243,7 +255,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           continue;
         }
         const m = name.match(YEAR_FILE);
-        const data = m ? yearsRef.current[Number(m[1])] : categoriesRef.current;
+        const data = m ? yearsRef.current[Number(m[1])] : name === SETTINGS_FILE ? settingsRef.current : categoriesRef.current;
         if (!data) continue;
         try {
           await backupIfDue(dir, name);
@@ -278,6 +290,48 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     publishYears();
     markDirty(yearFile(year));
   };
+
+  // Insert the fixed bookings (Fixbuchungen) that are due up to the current month
+  const syncRecurring = () => {
+    const missing = missingBookings(settingsRef.current.recurring, yearsRef.current, ymToday());
+    if (missing.length === 0) return;
+    const byYear = new Map<number, Booking[]>();
+    for (const b of missing) byYear.set(yearOf(b.date), [...(byYear.get(yearOf(b.date)) ?? []), b]);
+    for (const [year, list] of byYear) mutateYear(year, y => ({ ...y, bookings: [...y.bookings, ...list] }));
+  };
+
+  const setSettings = useCallback((fn: (s: Settings) => Settings) => {
+    const next = fn(settingsRef.current);
+    settingsRef.current = next;
+    setSettingsState(next);
+    markDirty(SETTINGS_FILE);
+    syncRecurring();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const setBalance = useCallback((ym: string, accountId: string, value: number | null) => {
+    mutateYear(Number(ym.slice(0, 4)), y => {
+      const month = { ...(y.balances?.[ym] ?? {}) };
+      if (value == null || isNaN(value)) delete month[accountId]; else month[accountId] = value;
+      const balances = { ...(y.balances ?? {}) };
+      if (Object.keys(month).length) balances[ym] = month; else delete balances[ym];
+      const { balances: _, ...rest } = y;
+      return Object.keys(balances).length ? { ...rest, balances } : rest;
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Leave one month of a fixed booking out: remember it and remove the generated booking
+  const skipRecurring = useCallback((recurringId: string, ym: string) => {
+    const id = `rec-${recurringId}-${ym}`;
+    mutateYear(Number(ym.slice(0, 4)), y => ({ ...y, bookings: y.bookings.filter(b => b.id !== id) }));
+    const next: Settings = {
+      ...settingsRef.current,
+      recurring: settingsRef.current.recurring.map(r => r.id === recurringId
+        ? { ...r, skip: [...new Set([...(r.skip ?? []), ym])].sort() } : r),
+    };
+    settingsRef.current = next;
+    setSettingsState(next);
+    markDirty(SETTINGS_FILE);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const setCategories = useCallback((c: Category[]) => {
     categoriesRef.current = c;
@@ -376,10 +430,24 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         fail(`Lesen von ${name} fehlgeschlagen`, e);
       }
     }
+    let st: Settings = EMPTY_SETTINGS;
+    try {
+      const text = await readText(dir, SETTINGS_FILE);
+      if (text?.trim()) {
+        const parsed = JSON.parse(text) as Partial<Settings>;
+        st = { accounts: parsed.accounts ?? [], recurring: parsed.recurring ?? [] };
+      }
+    } catch (e) {
+      unreadableRef.current.add(SETTINGS_FILE);
+      fail(`Lesen von ${SETTINGS_FILE} fehlgeschlagen`, e);
+    }
     categoriesRef.current = cats;
     setCategoriesState(cats);
+    settingsRef.current = st;
+    setSettingsState(st);
     yearsRef.current = loaded;
     publishYears();
+    syncRecurring();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const activateDir = useCallback(async (dir: FileSystemDirectoryHandle) => {
@@ -456,6 +524,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     return !d;
   });
 
+  // Dev only: lets a test page load data without a directory picker
+  useEffect(() => {
+    if (import.meta.env.DEV) (window as unknown as { __budget?: unknown }).__budget = { importData };
+  }, [importData]);
+
   useEffect(() => {
     document.documentElement.classList.toggle('dark', isDark);
     document.documentElement.classList.toggle('light', !isDark);
@@ -463,8 +536,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <Ctx.Provider value={{
-      categories, years, dirHandle, savedHandleAvailable, isDark, ioError, lastCategoryId,
-      setCategories, setBudget, copyBudget, setMonths, addBooking, updateBooking, deleteBooking, importData,
+      categories, years, settings, dirHandle, savedHandleAvailable, isDark, ioError, lastCategoryId,
+      setCategories, setBudget, copyBudget, setMonths, setSettings, setBalance, skipRecurring, addBooking, updateBooking, deleteBooking, importData,
       pickDirectory, reconnectDirectory, toggleTheme,
       gitConfig, setGitConfig, gitStatus, commitNow, commitAllData,
     }}>

@@ -12,6 +12,12 @@ und optional in ein GitHub-Repository committet.
 - **Buchungen** – einzelne Buchungen pro Monat erfassen (Datum, Kategorie, Betrag, Text), filtern, suchen, duplizieren.
 - **Übersicht** – Ausgaben pro Monat nach Kategorie (gestapelt, Einnahmen als Strich, Budget gestrichelt), Jahrestabelle
   und Kategorien pro Jahr.
+- **Analyse** – Einnahmen/Ausgaben/Überschuss pro Jahr, Sparquote, kumulierter Überschuss, Ausgaben nach Kategorie
+  (Donut) und eine Kategorie im Zeitverlauf mit Budget. Es zählen nur verbuchte Monate.
+- **Abgleich** – Kontostände laut Bankauszug pro Monat eintragen; die Veränderung wird dem Überschuss der Buchhaltung
+  gegenübergestellt, die Differenz zeigt fehlende Buchungen.
+- **Fixbuchungen** – monatlich wiederkehrende Buchungen, z. B. Abschreibungen mit Gesamtbetrag; werden automatisch bis
+  zum laufenden Monat erzeugt, einzelne Monate lassen sich auslassen.
 - **Kategorien** – Ausgaben- und Einnahmen-Kategorien mit Farbe, Reihenfolge und Archiv.
 - **Admin** – Datenverzeichnis und Git-Versionierung (fine-grained GitHub Token, nur im Browser gespeichert).
 
@@ -19,7 +25,8 @@ und optional in ein GitHub-Repository committet.
 
 ```
 categories.json      Kategorien (id, name, kind, color, archived)
-budget-2025.json     pro Jahr: budget (Kategorie → CHF/Monat), bookings, months (optional: Divisor für Ø)
+settings.json        Konten (Abgleich) und Fixbuchungen
+budget-2025.json     pro Jahr: budget (Kategorie → CHF/Monat), bookings, months (Divisor für Ø), balances (Kontostände)
 backup/              automatische Sicherungen (höchstens stündlich, 30 pro Datei)
 ```
 

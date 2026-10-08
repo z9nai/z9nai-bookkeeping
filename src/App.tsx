@@ -1,13 +1,16 @@
 import React, { useState } from 'react';
-import { Sun, Moon, FolderOpen, CalendarRange, List, BarChart2, Tags, Settings } from 'lucide-react';
+import { Sun, Moon, FolderOpen, CalendarRange, List, BarChart2, PieChart, Scale, Repeat, Tags, Settings } from 'lucide-react';
 import { useStore } from './store';
 import YearView from './components/YearView';
 import BookingsView from './components/BookingsView';
 import OverviewView from './components/OverviewView';
 import CategoriesView from './components/CategoriesView';
 import AdminView from './components/AdminView';
+import AnalysisView from './components/AnalysisView';
+import ReconcileView from './components/ReconcileView';
+import RecurringView from './components/RecurringView';
 
-type View = 'year' | 'bookings' | 'overview' | 'categories' | 'admin';
+type View = 'year' | 'bookings' | 'overview' | 'analysis' | 'reconcile' | 'recurring' | 'categories' | 'admin';
 
 export default function App() {
   const { isDark, toggleTheme, dirHandle, savedHandleAvailable, pickDirectory, reconnectDirectory, ioError } = useStore();
@@ -38,7 +41,7 @@ export default function App() {
       }`}
     >
       <Icon size={13} />
-      <span className="hidden lg:inline">{label}</span>
+      <span className="hidden xl:inline">{label}</span>
     </button>
   );
 
@@ -54,6 +57,9 @@ export default function App() {
         {navBtn('year', CalendarRange, 'Jahr')}
         {navBtn('bookings', List, 'Buchungen')}
         {navBtn('overview', BarChart2, 'Übersicht')}
+        {navBtn('analysis', PieChart, 'Analyse')}
+        {navBtn('reconcile', Scale, 'Abgleich')}
+        {navBtn('recurring', Repeat, 'Fixbuchungen')}
         {navBtn('categories', Tags, 'Kategorien')}
 
         <div className="ml-auto flex items-center gap-3">
@@ -114,6 +120,18 @@ export default function App() {
         ) : view === 'overview' ? (
           <div className="flex-1 overflow-y-auto">
             <OverviewView onOpenYear={openYear} />
+          </div>
+        ) : view === 'analysis' ? (
+          <div className="flex-1 overflow-y-auto">
+            <AnalysisView />
+          </div>
+        ) : view === 'reconcile' ? (
+          <div className="flex-1 overflow-y-auto">
+            <ReconcileView year={year} setYear={setYear} />
+          </div>
+        ) : view === 'recurring' ? (
+          <div className="flex-1 overflow-y-auto">
+            <RecurringView />
           </div>
         ) : view === 'categories' ? (
           <div className="flex-1 overflow-y-auto">

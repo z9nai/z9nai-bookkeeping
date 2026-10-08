@@ -23,14 +23,17 @@ export default function OverviewView({ onOpenYear }: { onOpenYear: (y: number) =
   const expenseCats = categories.filter(c => c.kind === 'expense');
   const series: BarSeries[] = expenseCats.map(c => ({
     id: c.id, name: c.name, color: c.color,
-    values: months.map(({ y, m }) => stats[y]?.cats[c.id]?.months[m - 1] ?? 0),
+    values: months.map(ym => booked(ym) ? stats[ym.y]?.cats[c.id]?.months[ym.m - 1] ?? 0 : 0),
   })).filter(s => s.values.some(v => v !== 0));
+  // Only booked months count: anything beyond a year's booked months is shown as future
+  const booked = (ym: { y: number; m: number }) => (stats[ym.y]?.bookedMonths ?? 0) >= ym.m;
   const bars: MonthBar[] = months.map(ym => {
     const s = stats[ym.y];
+    const isBooked = booked(ym);
     return {
-      ym, state: monthState(ym, cy, cm),
-      actual: s?.expense.months[ym.m - 1] ?? 0,
-      target: s?.income.months[ym.m - 1] ?? 0,
+      ym, state: isBooked ? monthState(ym, cy, cm) : 'future',
+      actual: isBooked ? s?.expense.months[ym.m - 1] ?? 0 : 0,
+      target: isBooked ? s?.income.months[ym.m - 1] ?? 0 : 0,
       budget: s?.expense.budgetMonth ?? 0,
     };
   });
@@ -88,9 +91,9 @@ export default function OverviewView({ onOpenYear }: { onOpenYear: (y: number) =
                 return (
                   <tr key={y.year} onClick={() => onOpenYear(y.year)} className={`border-t ${t.border} ${t.rowHover} cursor-pointer ${y.year === cy ? 'font-semibold' : ''}`}>
                     <td className="px-2 py-1.5">{y.year}{s.bookedMonths < 12 && s.bookedMonths > 0 ? <span className={`ml-1 font-normal ${t.muted}`}>({s.bookedMonths} Mt)</span> : ''}</td>
-                    <td className="px-3 py-1.5 text-right tabular-nums">{fmtChf(s.expense.total)}</td>
-                    <td className="px-3 py-1.5 text-right tabular-nums">{fmtChf(s.income.total)}</td>
-                    <td className="px-3 py-1.5 text-right tabular-nums"><Signed value={s.surplusTotal} fmt={fmtChf} isDark={isDark} /></td>
+                    <td className="px-3 py-1.5 text-right tabular-nums">{fmtChf(s.expense.booked)}</td>
+                    <td className="px-3 py-1.5 text-right tabular-nums">{fmtChf(s.income.booked)}</td>
+                    <td className="px-3 py-1.5 text-right tabular-nums"><Signed value={s.surplusBooked} fmt={fmtChf} isDark={isDark} /></td>
                     <td className={`px-3 py-1.5 text-right tabular-nums border-l ${t.border}`}>{num(s.expense.avg)}</td>
                     <td className="px-3 py-1.5 text-right tabular-nums">{num(s.income.avg)}</td>
                     <td className={`px-3 py-1.5 text-right tabular-nums ${t.muted}`}>{num(s.expense.budgetYear)}</td>
@@ -122,9 +125,9 @@ export default function OverviewView({ onOpenYear }: { onOpenYear: (y: number) =
                   <React.Fragment key={kind}>
                     <tr><td colSpan={tableYears.length + 2} className={`pt-3 pb-1 px-2 ${t.section}`}>{kind === 'expense' ? 'Ausgaben' : 'Einnahmen'}</td></tr>
                     {catRows(kind).map(c => {
-                      const vals = tableYears.map(y => stats[y.year]?.cats[c.id]?.total ?? 0);
+                      const vals = tableYears.map(y => stats[y.year]?.cats[c.id]?.booked ?? 0);
                       const full = tableYears.filter(y => stats[y.year].bookedMonths === 12);
-                      const avg = full.length ? full.reduce((a, y) => a + (stats[y.year]?.cats[c.id]?.total ?? 0), 0) / full.length : 0;
+                      const avg = full.length ? full.reduce((a, y) => a + (stats[y.year]?.cats[c.id]?.booked ?? 0), 0) / full.length : 0;
                       return (
                         <tr key={c.id} className={`border-t ${t.border} ${t.rowHover}`}>
                           <td className={`sticky left-0 px-2 py-1 whitespace-nowrap ${t.surface}`}>
@@ -142,22 +145,22 @@ export default function OverviewView({ onOpenYear }: { onOpenYear: (y: number) =
                     })}
                     <tr className={`border-t ${t.border} font-semibold`}>
                       <td className={`sticky left-0 px-2 py-1 ${t.surface}`}>Total {kind === 'expense' ? 'Ausgaben' : 'Einnahmen'}</td>
-                      {tableYears.map(y => <td key={y.year} className="px-3 py-1 text-right tabular-nums">{fmtChf(stats[y.year][kind].total)}</td>)}
+                      {tableYears.map(y => <td key={y.year} className="px-3 py-1 text-right tabular-nums">{fmtChf(stats[y.year][kind].booked)}</td>)}
                       <td className={`px-3 py-1 text-right tabular-nums border-l ${t.border}`}>
-                        {(() => { const full = tableYears.filter(y => stats[y.year].bookedMonths === 12); return full.length ? fmtChf(full.reduce((a, y) => a + stats[y.year][kind].total, 0) / full.length) : '–'; })()}
+                        {(() => { const full = tableYears.filter(y => stats[y.year].bookedMonths === 12); return full.length ? fmtChf(full.reduce((a, y) => a + stats[y.year][kind].booked, 0) / full.length) : '–'; })()}
                       </td>
                     </tr>
                   </React.Fragment>
                 ))}
                 <tr className={`border-t ${t.border} font-semibold`}>
                   <td className={`sticky left-0 px-2 py-1 ${t.surface}`}>Überschuss</td>
-                  {tableYears.map(y => <td key={y.year} className="px-3 py-1 text-right tabular-nums"><Signed value={stats[y.year].surplusTotal} fmt={fmtChf} isDark={isDark} /></td>)}
+                  {tableYears.map(y => <td key={y.year} className="px-3 py-1 text-right tabular-nums"><Signed value={stats[y.year].surplusBooked} fmt={fmtChf} isDark={isDark} /></td>)}
                   <td className={`border-l ${t.border}`} />
                 </tr>
               </tbody>
             </table>
           </div>
-          <p className={`text-[11px] mt-3 ${t.muted}`}>Ø / Jahr berücksichtigt nur vollständig gebuchte Jahre.</p>
+          <p className={`text-[11px] mt-3 ${t.muted}`}>Es zählen nur die verbuchten Monate (Jahr: «Ø über … Monate»); Ø / Jahr berücksichtigt nur vollständig gebuchte Jahre.</p>
         </>
       )}
     </div>

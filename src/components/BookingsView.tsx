@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Plus, Copy, Trash2, X, Search } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Copy, Trash2, X, Search, Repeat } from 'lucide-react';
 import { useStore } from '../store';
 import { Booking, Category, EMPTY_YEAR } from '../types';
 import { colorClasses } from '../colors';
@@ -20,7 +20,7 @@ const fmtDay = (iso: string) => {
 };
 
 export default function BookingsView({ year, setYear, month, setMonth, catFilter, setCatFilter }: Props) {
-  const { isDark, categories, years, addBooking, updateBooking, deleteBooking, lastCategoryId, dirHandle } = useStore();
+  const { isDark, categories, years, settings, addBooking, updateBooking, deleteBooking, skipRecurring, lastCategoryId, dirHandle } = useStore();
   const t = themeClasses(isDark);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [search, setSearch] = useState('');
@@ -72,8 +72,14 @@ export default function BookingsView({ year, setYear, month, setMonth, catFilter
   };
 
   const remove = (b: Booking) => {
-    if (!confirm(`Buchung vom ${fmtDate(b.date)} (${byId.get(b.categoryId)?.name ?? ''}, CHF ${fmtAmount(b.amount)}) löschen?`)) return;
-    deleteBooking(b.id);
+    const rec = b.recurringId ? settings.recurring.find(r => r.id === b.recurringId) : undefined;
+    if (rec) {
+      if (!confirm(`Fixbuchung «${rec.name}» für ${MONTH_NAMES[monthOf(b.date) - 1]} ${b.date.slice(0, 4)} auslassen? Sie wird für diesen Monat nicht mehr erzeugt.`)) return;
+      skipRecurring(rec.id, b.date.slice(0, 7));
+    } else {
+      if (!confirm(`Buchung vom ${fmtDate(b.date)} (${byId.get(b.categoryId)?.name ?? ''}, CHF ${fmtAmount(b.amount)}) löschen?`)) return;
+      deleteBooking(b.id);
+    }
     setDraft(null);
   };
 
@@ -160,7 +166,12 @@ export default function BookingsView({ year, setYear, month, setMonth, catFilter
                         <span className="truncate">{c?.name ?? <span className="text-red-400">{b.categoryId}</span>}</span>
                       </span>
                     </td>
-                    <td className={`px-2 py-1.5 ${b.text ? '' : t.faint}`}>{b.text || '–'}</td>
+                    <td className={`px-2 py-1.5 ${b.text ? '' : t.faint}`}>
+                      <span className="flex items-center gap-1.5">
+                        {b.recurringId && <Repeat size={11} className={t.muted} aria-label="Fixbuchung" />}
+                        {b.text || '–'}
+                      </span>
+                    </td>
                     <td className={`px-2 py-1.5 text-right tabular-nums ${c?.kind === 'income' ? t.pos : ''} ${b.amount < 0 ? t.neg : ''}`}>{fmtAmount(b.amount)}</td>
                     <td className="px-1 py-1 text-right whitespace-nowrap">
                       <button className={`${t.iconBtn} opacity-0 group-hover:opacity-100`} title="Duplizieren"
