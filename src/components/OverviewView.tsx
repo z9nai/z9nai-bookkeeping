@@ -20,13 +20,13 @@ export default function OverviewView({ onOpenYear }: { onOpenYear: (y: number) =
 
   // ── Monthly chart ──
   const months = rangeMonths(range, cy, cm, from);
+  // Only booked months count: anything beyond a year's booked months is shown as future
+  const booked = (ym: { y: number; m: number }) => (stats[ym.y]?.bookedMonths ?? 0) >= ym.m;
   const expenseCats = categories.filter(c => c.kind === 'expense');
   const series: BarSeries[] = expenseCats.map(c => ({
     id: c.id, name: c.name, color: c.color,
     values: months.map(ym => booked(ym) ? stats[ym.y]?.cats[c.id]?.months[ym.m - 1] ?? 0 : 0),
   })).filter(s => s.values.some(v => v !== 0));
-  // Only booked months count: anything beyond a year's booked months is shown as future
-  const booked = (ym: { y: number; m: number }) => (stats[ym.y]?.bookedMonths ?? 0) >= ym.m;
   const bars: MonthBar[] = months.map(ym => {
     const s = stats[ym.y];
     const isBooked = booked(ym);
