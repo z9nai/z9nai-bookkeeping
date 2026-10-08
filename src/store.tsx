@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { Booking, Category, EMPTY_SETTINGS, EMPTY_YEAR, Settings, YearData } from './types';
-import { missingBookings, ymToday } from './recurring';
+import { syncGenerated, ymToday } from './recurring';
 import { GitConfig, GitFile, commitFiles, loadGitConfig, saveGitConfig } from './git';
 import { sortBookings, yearOf } from './budget';
 
@@ -291,13 +291,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     markDirty(yearFile(year));
   };
 
-  // Insert the fixed bookings (Fixbuchungen) that are due up to the current month
+  // Keep the generated fixed bookings (Fixbuchungen) in line with their definitions, up to the current month
   const syncRecurring = () => {
-    const missing = missingBookings(settingsRef.current.recurring, yearsRef.current, ymToday());
-    if (missing.length === 0) return;
-    const byYear = new Map<number, Booking[]>();
-    for (const b of missing) byYear.set(yearOf(b.date), [...(byYear.get(yearOf(b.date)) ?? []), b]);
-    for (const [year, list] of byYear) mutateYear(year, y => ({ ...y, bookings: [...y.bookings, ...list] }));
+    const changed = syncGenerated(settingsRef.current.recurring, yearsRef.current, ymToday());
+    for (const [year, list] of Object.entries(changed)) mutateYear(Number(year), y => ({ ...y, bookings: list }));
   };
 
   const setSettings = useCallback((fn: (s: Settings) => Settings) => {

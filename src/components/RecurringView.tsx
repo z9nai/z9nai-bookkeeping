@@ -40,7 +40,9 @@ export default function RecurringView() {
       <p className={`text-[11px] leading-relaxed mb-5 ${t.muted}`}>
         Monatlich wiederkehrende Buchungen, z.&nbsp;B. Abschreibungen: Die App erzeugt sie automatisch am 1. jedes Monats bis zum
         laufenden Monat. Mit einem Gesamtbetrag endet die Buchung, sobald er abgeschrieben ist (der letzte Monat bucht den Rest).
-        Änderungen am Betrag wirken nur auf künftige Monate; einzelne Monate lassen sich in den Buchungen auslassen.
+        Änderungen an der Definition (Kategorie, Betrag, Text, Zeitraum, Häkchen) wirken auf alle erzeugten Buchungen;
+        einzelne Monate lassen sich in den Buchungen auslassen. Soll ein Betrag erst ab einem Monat gelten, die alte Fixbuchung
+        dort beenden und eine neue beginnen.
       </p>
 
       {settings.recurring.length === 0 && <p className={`text-xs ${t.faint}`}>Noch keine Fixbuchungen.</p>}

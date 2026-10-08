@@ -48,19 +48,43 @@ export function plannedMonths(r: Recurring, uptoYm: string): { ym: string; amoun
   return out;
 }
 
-// Generated bookings that are not yet in the year files
-export function missingBookings(recurring: Recurring[], years: Record<number, YearData>, uptoYm: string): Booking[] {
-  const out: Booking[] = [];
+function generated(r: Recurring, ym: string, amount: number): Booking {
+  return { id: bookingId(r, ym), date: `${ym}-01`, categoryId: r.categoryId, amount, text: r.text || r.name, recurringId: r.id, ...(r.noBank ? { noBank: true } : {}) };
+}
+
+const sameBooking = (a: Booking, b: Booking) =>
+  a.date === b.date && a.categoryId === b.categoryId && a.amount === b.amount && a.text === b.text && !!a.noBank === !!b.noBank;
+
+// Brings the generated bookings in line with the definitions: adds months
+// that are due, updates changed ones and removes months no longer planned.
+// Returns the years that changed with their complete new booking lists.
+export function syncGenerated(recurring: Recurring[], years: Record<number, YearData>, uptoYm: string): Record<number, Booking[]> {
+  const wanted = new Map<string, Booking>(); // booking id → booking as it should be
   for (const r of recurring) {
     if (!r.categoryId || !r.amount || !/^\d{4}-\d{2}$/.test(r.from)) continue;
-    for (const { ym, amount } of plannedMonths(r, uptoYm)) {
-      const id = bookingId(r, ym);
-      const year = years[Number(ym.slice(0, 4))];
-      if (year?.bookings.some(b => b.id === id)) continue;
-      out.push({ id, date: `${ym}-01`, categoryId: r.categoryId, amount, text: r.text || r.name, recurringId: r.id, ...(r.noBank ? { noBank: true } : {}) });
-    }
+    for (const { ym, amount } of plannedMonths(r, uptoYm)) wanted.set(bookingId(r, ym), generated(r, ym, amount));
   }
-  return out;
+  const ids = new Set(recurring.map(r => r.id));
+  const changed: Record<number, Booking[]> = {};
+  const touched = new Set<number>();
+  for (const b of wanted.values()) touched.add(Number(b.date.slice(0, 4)));
+  for (const y of Object.values(years)) if (y.bookings.some(b => b.recurringId && ids.has(b.recurringId))) touched.add(y.year);
+  for (const year of touched) {
+    const list = years[year]?.bookings ?? [];
+    let dirty = false;
+    const next: Booking[] = [];
+    for (const b of list) {
+      if (!b.recurringId || !ids.has(b.recurringId)) { next.push(b); continue; } // hand-made or from a deleted definition: keep
+      const w = wanted.get(b.id);
+      if (!w) { dirty = true; continue; }        // no longer planned (start moved, skipped, total reached)
+      if (!sameBooking(b, w)) dirty = true;
+      next.push(w);
+      wanted.delete(b.id);
+    }
+    for (const w of wanted.values()) if (Number(w.date.slice(0, 4)) === year) { next.push(w); dirty = true; }
+    if (dirty) changed[year] = next;
+  }
+  return changed;
 }
 
 // Already booked amount of a definition (from the actual bookings)
