@@ -51,9 +51,10 @@ export default function ReconcileView({ year, setYear, month, setMonth }: {
     const booked = st.expense.months[i];
     const writeOff = writeOffs.reduce((s, b) => s + b.amount, 0);
     const refund = -negatives.reduce((s, b) => s + b.amount, 0) || 0;
-    const expected = booked - writeOff + refund;
-    const diff = bank != null ? bank - adjust - expected : null;
-    return { m, ym, label, entered, bank, adjust, booked, writeOff, refund, expected, diff, writeOffs, negatives };
+    const books = booked - writeOff;                         // Buchhaltung ohne Abschreiber
+    const bankNet = bank != null ? bank - adjust - refund : null; // Bank ohne Abzüge und Rückerstattungen
+    const diff = bankNet != null ? bankNet - books : null;
+    return { m, ym, label, entered, bank, adjust, booked, writeOff, refund, books, bankNet, diff, writeOffs, negatives };
   });
   const sel = rows[month - 1];
   const num = (v: number) => Math.round(v) === 0 ? <span className={t.faint}>–</span> : fmtChf(v);
@@ -96,9 +97,9 @@ export default function ReconcileView({ year, setYear, month, setMonth }: {
         </div>
       </div>
       <p className={`text-[11px] leading-relaxed mb-5 ${t.muted}`}>
-        Pro Monat die <b>Belastungen laut Bankauszug</b> je Konto eintragen (Summe aller Abbuchungen), unter «Abzüge» Belastungen,
-        die keine Ausgabe sind (z.&nbsp;B. Übertrag aufs Sparkonto). Die Buchhaltung muss aufgehen:
-        gebuchte Ausgaben − Abschreiber (Fixbuchungen ohne Bankbewegung) + Rückerstattungen (Negativbuchungen) = Bank − Abzüge.
+        Wie im Sheet: Pro Monat die <b>Belastungen laut Bankauszug</b> je Konto eintragen (Summe aller Abbuchungen), unter «Abzüge»
+        Belastungen, die keine Ausgabe sind (z.&nbsp;B. Übertrag aufs Sparkonto). Davon gehen die Rückerstattungen (Negativbuchungen) ab.
+        Das Ergebnis muss den gebuchten Ausgaben ohne Abschreiber (Buchungen ohne Bankbewegung) entsprechen.
         Eine positive Differenz heisst, es fehlen Ausgaben in der Buchhaltung; eine negative, es ist zu viel gebucht.
       </p>
 
@@ -122,12 +123,12 @@ export default function ReconcileView({ year, setYear, month, setMonth }: {
               <tr className={`text-[10px] uppercase tracking-wider ${t.muted}`}>
                 <th className="text-left font-normal py-1.5 px-2">Monat</th>
                 {accounts.map(a => <th key={a.id} className="text-right font-normal px-2" title="Belastungen laut Bankauszug">{a.name}</th>)}
-                <th className="text-right font-normal px-2" title="Belastungen, die keine Ausgabe sind">Abzüge</th>
-                <th className={`text-right font-normal px-3 border-l ${t.border}`}>Bank netto</th>
+                <th className="text-right font-normal px-2" title="Belastungen, die keine Ausgabe sind">− Abzüge</th>
+                <th className="text-right font-normal px-3" title="Negativbuchungen des Monats">− Rückerst.</th>
+                <th className="text-right font-normal px-3">= Bank</th>
                 <th className={`text-right font-normal px-3 border-l ${t.border}`}>Gebucht</th>
                 <th className="text-right font-normal px-3">− Abschreiber</th>
-                <th className="text-right font-normal px-3">+ Rückerst.</th>
-                <th className="text-right font-normal px-3">= Erwartet</th>
+                <th className="text-right font-normal px-3">= Buchhaltung</th>
                 <th className={`text-right font-normal px-3 border-l ${t.border}`}>Differenz</th>
               </tr>
             </thead>
@@ -147,11 +148,11 @@ export default function ReconcileView({ year, setYear, month, setMonth }: {
                     <td className="px-1 py-0.5 text-right" onClick={e => e.stopPropagation()}>
                       <AmountCell value={r.entered[ADJUST]} onCommit={v => setBalance(r.ym, ADJUST, v)} isDark={isDark} />
                     </td>
-                    <td className={`px-3 py-1 text-right tabular-nums border-l ${t.border}`}>{r.bank != null ? fmtChf(r.bank - r.adjust) : '–'}</td>
+                    <td className="px-3 py-1 text-right tabular-nums">{num(r.refund)}</td>
+                    <td className="px-3 py-1 text-right tabular-nums font-semibold">{r.bankNet != null ? fmtChf(r.bankNet) : '–'}</td>
                     <td className={`px-3 py-1 text-right tabular-nums border-l ${t.border}`}>{num(r.booked)}</td>
                     <td className="px-3 py-1 text-right tabular-nums">{num(r.writeOff)}</td>
-                    <td className="px-3 py-1 text-right tabular-nums">{num(r.refund)}</td>
-                    <td className="px-3 py-1 text-right tabular-nums font-semibold">{num(r.expected)}</td>
+                    <td className="px-3 py-1 text-right tabular-nums font-semibold">{num(r.books)}</td>
                     <td className={`px-3 py-1 text-right tabular-nums font-semibold border-l ${t.border}`}>
                       {r.diff == null ? '' : ok ? <span className={`inline-flex items-center gap-1 ${t.pos}`}><Check size={12} /> 0</span>
                         : <Signed value={Math.round(r.diff * 100) / 100} fmt={fmtAmount} isDark={isDark} />}
@@ -171,7 +172,8 @@ export default function ReconcileView({ year, setYear, month, setMonth }: {
           empty="Keine Negativbuchungen in diesem Monat." />
       </div>
       <p className={`text-[11px] mt-3 ${t.muted}`}>
-        {MONTH_SHORT[month - 1]} {year}: gebucht {fmtChf(sel.booked)} − Abschreiber {fmtChf(sel.writeOff)} + Rückerstattungen {fmtChf(sel.refund)} = erwartete Belastungen {fmtChf(sel.expected)}.
+        {MONTH_SHORT[month - 1]} {year}: Bank {sel.bank != null ? fmtChf(sel.bank) : '–'} − Abzüge {fmtChf(sel.adjust)} − Rückerstattungen {fmtChf(sel.refund)} = {sel.bankNet != null ? fmtChf(sel.bankNet) : '–'};
+        gebucht {fmtChf(sel.booked)} − Abschreiber {fmtChf(sel.writeOff)} = {fmtChf(sel.books)}.
       </p>
     </div>
   );
