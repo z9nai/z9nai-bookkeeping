@@ -526,8 +526,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   // Dev only: lets a test page load data without a directory picker
   useEffect(() => {
-    if (import.meta.env.DEV) (window as unknown as { __budget?: unknown }).__budget = { importData };
-  }, [importData]);
+    if (import.meta.env.DEV) (window as unknown as { __budget?: unknown }).__budget = { importData, setSettings };
+  }, [importData, setSettings]);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', isDark);

@@ -23,7 +23,7 @@ export interface YearData {
   budget: Record<string, number>; // categoryId → CHF per month
   bookings: Booking[];
   months?: number;                // months to divide by for Ø and Hochrechnung (sheet cell B19); default: see bookedMonths()
-  balances?: Record<string, Record<string, number>>; // "YYYY-MM" → accountId → bank balance at month end (Abgleich)
+  balances?: Record<string, Record<string, number>>; // "YYYY-MM" → accountId → debits on that account in the month; key "_adjust" = non-expense debits (Abgleich)
 }
 
 // ── Settings (settings.json) ────────────────────────────────────────────────
@@ -44,6 +44,7 @@ export interface Recurring {
   to?: string;         // "YYYY-MM" (inclusive); omitted = open end or derived from total
   total?: number;      // total to write off (Abschreibung) → the last month books the remainder
   skip?: string[];     // months ("YYYY-MM") left out on purpose
+  noBank?: boolean;    // pure bookkeeping entry without a bank movement (Abschreibung) → excluded from the bank reconciliation
 }
 
 export interface Settings {

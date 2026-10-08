@@ -127,7 +127,7 @@ export default function App() {
           </div>
         ) : view === 'reconcile' ? (
           <div className="flex-1 overflow-y-auto">
-            <ReconcileView year={year} setYear={setYear} />
+            <ReconcileView year={year} setYear={setYear} month={month} setMonth={setMonth} />
           </div>
         ) : view === 'recurring' ? (
           <div className="flex-1 overflow-y-auto">

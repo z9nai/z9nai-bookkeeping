@@ -62,6 +62,7 @@ export default function RecurringView() {
                 <span className={t.muted}>{cat?.name ?? <span className="text-red-400">Kategorie fehlt</span>}</span>
                 <span className="ml-auto tabular-nums">{fmtAmount(r.amount)} / Mt</span>
                 <span className={`tabular-nums ${t.muted}`}>{fmtYm(r.from)} – {end ? fmtYm(end) : 'offen'}</span>
+                {r.noBank && <span className={`text-[10px] uppercase tracking-wider ${t.muted}`} title="keine Bankbewegung">Abschreiber</span>}
                 {r.total ? (
                   <span className={`tabular-nums ${t.muted}`} title="abgeschrieben / Gesamtbetrag">
                     {fmtChf(Math.abs(booked.amount))} / {fmtChf(r.total)} · Rest <span className={rest === 0 ? t.pos : ''}>{fmtChf(rest ?? 0)}</span>
@@ -98,6 +99,10 @@ export default function RecurringView() {
                   <Field label="Gesamtbetrag (Abschreibung, optional)" isDark={isDark}>
                     <AmountInput value={r.total ?? 0} onCommit={v => update(r.id, { total: v || undefined, ...(v ? { to: undefined } : {}) })} cls={`${t.input} w-full text-right tabular-nums`} placeholder="–" />
                   </Field>
+                  <label className={`flex items-start gap-2 text-xs cursor-pointer col-span-2 ${t.soft}`}>
+                    <input type="checkbox" checked={!!r.noBank} onChange={e => update(r.id, { noBank: e.target.checked || undefined })} className="accent-blue-500 mt-0.5" />
+                    <span>Keine Bankbewegung (Abschreiber): Die Buchung ist rein buchhalterisch und wird im Abgleich mit dem Bankauszug herausgerechnet.</span>
+                  </label>
                   <div className="col-span-2">
                     <div className={`text-[10px] uppercase tracking-wider mb-1 ${t.muted}`}>Ausgelassene Monate</div>
                     <div className="flex flex-wrap gap-1.5">

@@ -1,32 +1,28 @@
 import React, { useState } from 'react';
-import { ChevronLeft, ChevronRight, Check, Plus, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Check, Plus, Trash2, Repeat } from 'lucide-react';
 import { useStore } from '../store';
-import { EMPTY_YEAR } from '../types';
-import { MONTH_NAMES, fmtAmount, fmtChf, genId, pad, parseAmount, yearStats } from '../budget';
+import { Booking, EMPTY_YEAR } from '../types';
+import { colorClasses } from '../colors';
+import { MONTH_NAMES, MONTH_SHORT, fmtAmount, fmtChf, fmtDate, genId, monthOf, pad, parseAmount, yearStats } from '../budget';
 import { Signed, themeClasses } from '../ui';
 
-export default function ReconcileView({ year, setYear }: { year: number; setYear: (y: number) => void }) {
+const ADJUST = '_adjust'; // pseudo account: debits that are no expense (e.g. transfers to savings)
+
+// Abgleich mit dem Bankauszug, wie im bisherigen Sheet: Belastungen laut Bank
+// pro Monat gegen die gebuchten Ausgaben. Abschreiber (Fixbuchungen ohne
+// Bankbewegung) und Negativbuchungen (Rückerstattungen) werden herausgerechnet.
+export default function ReconcileView({ year, setYear, month, setMonth }: {
+  year: number; setYear: (y: number) => void; month: number; setMonth: (m: number) => void;
+}) {
   const { isDark, categories, years, settings, setSettings, setBalance } = useStore();
   const t = themeClasses(isDark);
   const data = years[year] ?? EMPTY_YEAR(year);
   const st = yearStats(data, categories);
   const accounts = settings.accounts;
   const [newName, setNewName] = useState('');
-
-  const balanceOf = (ym: string, accId: string): number | undefined => {
-    const y = years[Number(ym.slice(0, 4))];
-    return y?.balances?.[ym]?.[accId];
-  };
-  const totalOf = (ym: string): number | null => {
-    if (accounts.length === 0) return null;
-    let sum = 0;
-    for (const a of accounts) {
-      const v = balanceOf(ym, a.id);
-      if (v == null) return null;
-      sum += v;
-    }
-    return sum;
-  };
+  const byId = new Map(categories.map(c => [c.id, c]));
+  const noBank = new Set(settings.recurring.filter(r => r.noBank).map(r => r.id));
+  const isExpense = (b: Booking) => (byId.get(b.categoryId)?.kind ?? 'expense') === 'expense';
 
   const addAccount = () => {
     const name = newName.trim();
@@ -36,18 +32,60 @@ export default function ReconcileView({ year, setYear }: { year: number; setYear
   };
   const renameAccount = (id: string, name: string) => setSettings(s => ({ ...s, accounts: s.accounts.map(a => a.id === id ? { ...a, name } : a) }));
   const removeAccount = (id: string, name: string) => {
-    if (!confirm(`Konto «${name}» entfernen? Eingetragene Kontostände bleiben in den Jahresdateien, werden aber nicht mehr angezeigt.`)) return;
+    if (!confirm(`Konto «${name}» entfernen? Eingetragene Beträge bleiben in den Jahresdateien, werden aber nicht mehr angezeigt.`)) return;
     setSettings(s => ({ ...s, accounts: s.accounts.filter(a => a.id !== id) }));
   };
 
-  const rows: { ym: string; label: string; month: number | null }[] = [
-    { ym: `${year - 1}-12`, label: `Dez ${year - 1} (Anfang)`, month: null },
-    ...MONTH_NAMES.map((m, i) => ({ ym: `${year}-${pad(i + 1)}`, label: m, month: i })),
-  ];
-  let prevTotal: number | null = totalOf(rows[0].ym);
+  // Per month: what the bank says and what the books say
+  const rows = MONTH_NAMES.map((label, i) => {
+    const m = i + 1;
+    const ym = `${year}-${pad(m)}`;
+    const entered = data.balances?.[ym] ?? {};
+    const bankParts = accounts.map(a => entered[a.id]);
+    const bank = bankParts.some(v => v != null) ? bankParts.reduce((s, v) => s + (v ?? 0), 0) : null;
+    const adjust = entered[ADJUST] ?? 0;
+    const list = data.bookings.filter(b => monthOf(b.date) === m && isExpense(b));
+    const writeOffs = list.filter(b => b.recurringId && noBank.has(b.recurringId));
+    const negatives = list.filter(b => b.amount < 0 && !(b.recurringId && noBank.has(b.recurringId)));
+    const booked = st.expense.months[i];
+    const writeOff = writeOffs.reduce((s, b) => s + b.amount, 0);
+    const refund = -negatives.reduce((s, b) => s + b.amount, 0) || 0;
+    const expected = booked - writeOff + refund;
+    const diff = bank != null ? bank - adjust - expected : null;
+    return { m, ym, label, entered, bank, adjust, booked, writeOff, refund, expected, diff, writeOffs, negatives };
+  });
+  const sel = rows[month - 1];
+  const num = (v: number) => Math.round(v) === 0 ? <span className={t.faint}>–</span> : fmtChf(v);
+
+  const BookingList = ({ title, list, empty }: { title: string; list: Booking[]; empty: string }) => (
+    <div className={`rounded-xl border p-4 ${t.border}`}>
+      <div className={`${t.section} mb-2`}>{title}</div>
+      {list.length === 0 ? <p className={`text-xs ${t.faint}`}>{empty}</p> : (
+        <table className="text-xs w-full">
+          <tbody>
+            {list.map(b => {
+              const c = byId.get(b.categoryId);
+              return (
+                <tr key={b.id} className={`border-t ${t.border}`}>
+                  <td className="py-1 pr-3 whitespace-nowrap">{fmtDate(b.date)}</td>
+                  <td className="py-1 pr-3"><span className="flex items-center gap-2"><span className={`w-2 h-2 rounded-full ${colorClasses(c?.color ?? 'slate').dot}`} />{c?.name}</span></td>
+                  <td className={`py-1 pr-3 ${b.text ? '' : t.faint}`}><span className="flex items-center gap-1.5">{b.recurringId && <Repeat size={11} className={t.muted} />}{b.text || '–'}</span></td>
+                  <td className={`py-1 text-right tabular-nums ${b.amount < 0 ? t.neg : ''}`}>{fmtAmount(b.amount)}</td>
+                </tr>
+              );
+            })}
+            <tr className={`border-t ${t.border} font-semibold`}>
+              <td className="py-1" colSpan={3}>Total</td>
+              <td className="py-1 text-right tabular-nums">{fmtAmount(list.reduce((s, b) => s + b.amount, 0))}</td>
+            </tr>
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div className="p-6 max-w-6xl mx-auto">
       <div className="flex items-center gap-3 mb-5">
         <h2 className={t.title}>Abgleich</h2>
         <div className="flex items-center gap-1 ml-2">
@@ -57,9 +95,10 @@ export default function ReconcileView({ year, setYear }: { year: number; setYear
         </div>
       </div>
       <p className={`text-[11px] leading-relaxed mb-5 ${t.muted}`}>
-        Kontostände laut Bankauszug am Monatsende eintragen. Die Veränderung gegenüber dem Vormonat muss dem Überschuss
-        der Buchhaltung (Einnahmen − Ausgaben) entsprechen. Eine positive Differenz heisst: Es fehlen Einnahmen oder es
-        wurden zu viele Ausgaben gebucht; eine negative: Es fehlen Ausgaben.
+        Pro Monat die <b>Belastungen laut Bankauszug</b> je Konto eintragen (Summe aller Abbuchungen), unter «Abzüge» Belastungen,
+        die keine Ausgabe sind (z.&nbsp;B. Übertrag aufs Sparkonto). Die Buchhaltung muss aufgehen:
+        gebuchte Ausgaben − Abschreiber (Fixbuchungen ohne Bankbewegung) + Rückerstattungen (Negativbuchungen) = Bank − Abzüge.
+        Eine positive Differenz heisst, es fehlen Ausgaben in der Buchhaltung; eine negative, es ist zu viel gebucht.
       </p>
 
       <div className={`${t.section} mb-2`}>Konten</div>
@@ -71,57 +110,73 @@ export default function ReconcileView({ year, setYear }: { year: number; setYear
           </span>
         ))}
         <input value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') addAccount(); }}
-          placeholder="Neues Konto, z. B. Konto Pascal" className={`${t.input} w-56`} />
+          placeholder="Neues Konto, z. B. Pascal" className={`${t.input} w-56`} />
         <button className={t.btn} onClick={addAccount} disabled={!newName.trim()}><Plus size={12} /> Konto</button>
       </div>
 
       {accounts.length > 0 && (
-        <table className="text-xs">
-          <thead>
-            <tr className={`text-[10px] uppercase tracking-wider ${t.muted}`}>
-              <th className="text-left font-normal py-1.5 px-2">Monat</th>
-              {accounts.map(a => <th key={a.id} className="text-right font-normal px-2">{a.name}</th>)}
-              <th className={`text-right font-normal px-3 border-l ${t.border}`}>Bank total</th>
-              <th className="text-right font-normal px-3">Δ Bank</th>
-              <th className="text-right font-normal px-3">Buchhaltung</th>
-              <th className="text-right font-normal px-3">Differenz</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map(r => {
-              const total = totalOf(r.ym);
-              const delta = total != null && prevTotal != null ? total - prevTotal : null;
-              const book = r.month != null ? st.surplus[r.month] : null;
-              const diff = delta != null && book != null ? delta - book : null;
-              const ok = diff != null && Math.abs(diff) < 0.5;
-              const beyond = r.month != null && r.month >= st.bookedMonths;
-              if (total != null) prevTotal = total;
-              return (
-                <tr key={r.ym} className={`border-t ${t.border} ${t.rowHover} ${r.month == null ? t.muted : ''} ${beyond ? t.faint : ''}`}>
-                  <td className="px-2 py-1 whitespace-nowrap">{r.label}</td>
-                  {accounts.map(a => (
-                    <td key={a.id} className="px-1 py-0.5 text-right">
-                      <BalanceInput value={balanceOf(r.ym, a.id)} onCommit={v => setBalance(r.ym, a.id, v)} isDark={isDark} />
+        <div className="overflow-x-auto">
+          <table className="text-xs min-w-max">
+            <thead>
+              <tr className={`text-[10px] uppercase tracking-wider ${t.muted}`}>
+                <th className="text-left font-normal py-1.5 px-2">Monat</th>
+                {accounts.map(a => <th key={a.id} className="text-right font-normal px-2" title="Belastungen laut Bankauszug">{a.name}</th>)}
+                <th className="text-right font-normal px-2" title="Belastungen, die keine Ausgabe sind">Abzüge</th>
+                <th className={`text-right font-normal px-3 border-l ${t.border}`}>Bank netto</th>
+                <th className={`text-right font-normal px-3 border-l ${t.border}`}>Gebucht</th>
+                <th className="text-right font-normal px-3">− Abschreiber</th>
+                <th className="text-right font-normal px-3">+ Rückerst.</th>
+                <th className="text-right font-normal px-3">= Erwartet</th>
+                <th className={`text-right font-normal px-3 border-l ${t.border}`}>Differenz</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(r => {
+                const beyond = r.m > st.bookedMonths;
+                const ok = r.diff != null && Math.abs(r.diff) < 0.5;
+                return (
+                  <tr key={r.ym} onClick={() => setMonth(r.m)}
+                    className={`border-t ${t.border} ${t.rowHover} cursor-pointer ${month === r.m ? t.selRow : ''} ${beyond ? t.faint : ''}`}>
+                    <td className="px-2 py-1 whitespace-nowrap">{r.label}</td>
+                    {accounts.map(a => (
+                      <td key={a.id} className="px-1 py-0.5 text-right" onClick={e => e.stopPropagation()}>
+                        <AmountCell value={r.entered[a.id]} onCommit={v => setBalance(r.ym, a.id, v)} isDark={isDark} />
+                      </td>
+                    ))}
+                    <td className="px-1 py-0.5 text-right" onClick={e => e.stopPropagation()}>
+                      <AmountCell value={r.entered[ADJUST]} onCommit={v => setBalance(r.ym, ADJUST, v)} isDark={isDark} />
                     </td>
-                  ))}
-                  <td className={`px-3 py-1 text-right tabular-nums border-l ${t.border}`}>{total != null ? fmtChf(total) : '–'}</td>
-                  <td className="px-3 py-1 text-right tabular-nums">{delta != null ? <Signed value={delta} fmt={fmtChf} isDark={isDark} zero="0" /> : '–'}</td>
-                  <td className="px-3 py-1 text-right tabular-nums">{book != null ? <Signed value={book} fmt={fmtChf} isDark={isDark} zero="0" /> : ''}</td>
-                  <td className="px-3 py-1 text-right tabular-nums font-semibold">
-                    {diff == null ? '' : ok ? <span className={`inline-flex items-center gap-1 ${t.pos}`}><Check size={12} /> 0</span>
-                      : <span className={t.neg}>{fmtAmount(Math.round(diff * 100) / 100)}</span>}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                    <td className={`px-3 py-1 text-right tabular-nums border-l ${t.border}`}>{r.bank != null ? fmtChf(r.bank - r.adjust) : '–'}</td>
+                    <td className={`px-3 py-1 text-right tabular-nums border-l ${t.border}`}>{num(r.booked)}</td>
+                    <td className="px-3 py-1 text-right tabular-nums">{num(r.writeOff)}</td>
+                    <td className="px-3 py-1 text-right tabular-nums">{num(r.refund)}</td>
+                    <td className="px-3 py-1 text-right tabular-nums font-semibold">{num(r.expected)}</td>
+                    <td className={`px-3 py-1 text-right tabular-nums font-semibold border-l ${t.border}`}>
+                      {r.diff == null ? '' : ok ? <span className={`inline-flex items-center gap-1 ${t.pos}`}><Check size={12} /> 0</span>
+                        : <Signed value={Math.round(r.diff * 100) / 100} fmt={fmtAmount} isDark={isDark} />}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
+
+      <div className="grid gap-4 md:grid-cols-2 mt-6">
+        <BookingList title={`Abschreiber im ${MONTH_NAMES[month - 1]} ${year}`} list={sel.writeOffs}
+          empty="Keine. Fixbuchungen mit «keine Bankbewegung» erscheinen hier." />
+        <BookingList title={`Rückerstattungen / Negativbuchungen im ${MONTH_NAMES[month - 1]} ${year}`} list={sel.negatives}
+          empty="Keine Negativbuchungen in diesem Monat." />
+      </div>
+      <p className={`text-[11px] mt-3 ${t.muted}`}>
+        {MONTH_SHORT[month - 1]} {year}: gebucht {fmtChf(sel.booked)} − Abschreiber {fmtChf(sel.writeOff)} + Rückerstattungen {fmtChf(sel.refund)} = erwartete Belastungen {fmtChf(sel.expected)}.
+      </p>
     </div>
   );
 }
 
-function BalanceInput({ value, onCommit, isDark }: { value: number | undefined; onCommit: (v: number | null) => void; isDark: boolean }) {
+function AmountCell({ value, onCommit, isDark }: { value: number | undefined; onCommit: (v: number | null) => void; isDark: boolean }) {
   const [text, setText] = useState<string | null>(null);
   const commit = () => {
     if (text == null) return;
