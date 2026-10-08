@@ -15,6 +15,7 @@ export interface Booking {
   amount: number;     // CHF, positive within its kind; negative = refund / correction
   text: string;
   recurringId?: string; // generated from a recurring booking (Fixbuchung)
+  noBank?: boolean;     // pure bookkeeping entry without a bank movement (Abschreiber) → excluded from the bank reconciliation
 }
 
 // One file per year: budget-YYYY.json

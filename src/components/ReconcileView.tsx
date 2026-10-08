@@ -45,8 +45,9 @@ export default function ReconcileView({ year, setYear, month, setMonth }: {
     const bank = bankParts.some(v => v != null) ? bankParts.reduce((s, v) => s + (v ?? 0), 0) : null;
     const adjust = entered[ADJUST] ?? 0;
     const list = data.bookings.filter(b => monthOf(b.date) === m && isExpense(b));
-    const writeOffs = list.filter(b => b.recurringId && noBank.has(b.recurringId));
-    const negatives = list.filter(b => b.amount < 0 && !(b.recurringId && noBank.has(b.recurringId)));
+    const isWriteOff = (b: Booking) => !!b.noBank || (!!b.recurringId && noBank.has(b.recurringId));
+    const writeOffs = list.filter(isWriteOff);
+    const negatives = list.filter(b => b.amount < 0 && !isWriteOff(b));
     const booked = st.expense.months[i];
     const writeOff = writeOffs.reduce((s, b) => s + b.amount, 0);
     const refund = -negatives.reduce((s, b) => s + b.amount, 0) || 0;
@@ -165,7 +166,7 @@ export default function ReconcileView({ year, setYear, month, setMonth }: {
 
       <div className="grid gap-4 md:grid-cols-2 mt-6">
         <BookingList title={`Abschreiber im ${MONTH_NAMES[month - 1]} ${year}`} list={sel.writeOffs}
-          empty="Keine. Fixbuchungen mit «keine Bankbewegung» erscheinen hier." />
+          empty="Keine. Buchungen mit dem Häkchen «keine Bankbewegung» (in der Buchung oder in der Fixbuchung) erscheinen hier." />
         <BookingList title={`Rückerstattungen / Negativbuchungen im ${MONTH_NAMES[month - 1]} ${year}`} list={sel.negatives}
           empty="Keine Negativbuchungen in diesem Monat." />
       </div>

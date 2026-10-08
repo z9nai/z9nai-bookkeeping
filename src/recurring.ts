@@ -57,7 +57,7 @@ export function missingBookings(recurring: Recurring[], years: Record<number, Ye
       const id = bookingId(r, ym);
       const year = years[Number(ym.slice(0, 4))];
       if (year?.bookings.some(b => b.id === id)) continue;
-      out.push({ id, date: `${ym}-01`, categoryId: r.categoryId, amount, text: r.text || r.name, recurringId: r.id });
+      out.push({ id, date: `${ym}-01`, categoryId: r.categoryId, amount, text: r.text || r.name, recurringId: r.id, ...(r.noBank ? { noBank: true } : {}) });
     }
   }
   return out;

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Plus, Copy, Trash2, X, Search, Repeat } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Copy, Trash2, X, Search, Repeat, Landmark } from 'lucide-react';
 import { useStore } from '../store';
 import { Booking, Category, EMPTY_YEAR } from '../types';
 import { colorClasses } from '../colors';
@@ -169,6 +169,7 @@ export default function BookingsView({ year, setYear, month, setMonth, catFilter
                     <td className={`px-2 py-1.5 ${b.text ? '' : t.faint}`}>
                       <span className="flex items-center gap-1.5">
                         {b.recurringId && <Repeat size={11} className={t.muted} aria-label="Fixbuchung" />}
+                        {b.noBank && <Landmark size={11} className={t.muted} aria-label="Abschreiber (keine Bankbewegung)" />}
                         {b.text || '–'}
                       </span>
                     </td>
@@ -215,12 +216,16 @@ function BookingPanel({ draft, categories, error, onSave, onCancel, onDelete, is
   const [categoryId, setCategoryId] = useState(draft.booking.categoryId);
   const [amount, setAmount] = useState(draft.booking.amount ? String(draft.booking.amount) : '');
   const [text, setText] = useState(draft.booking.text);
+  const [noBank, setNoBank] = useState(!!draft.booking.noBank);
   const amountRef = useRef<HTMLInputElement>(null);
   const cat = categories.find(c => c.id === categoryId);
 
   useEffect(() => { amountRef.current?.focus(); }, []);
 
-  const build = (): Booking => ({ ...draft.booking, date, categoryId, amount: parseAmount(amount), text: text.trim() });
+  const build = (): Booking => {
+    const { noBank: _, ...rest } = draft.booking;
+    return { ...rest, date, categoryId, amount: parseAmount(amount), text: text.trim(), ...(noBank ? { noBank: true } : {}) };
+  };
   const onKey = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !(e.target instanceof HTMLTextAreaElement)) { e.preventDefault(); onSave(build(), e.shiftKey); }
     if (e.key === 'Escape') onCancel();
@@ -250,6 +255,10 @@ function BookingPanel({ draft, categories, error, onSave, onCancel, onDelete, is
         <Field label="Text" isDark={isDark}>
           <input value={text} onChange={e => setText(e.target.value)} placeholder="Zweck, Beleg, …" className={`${t.input} w-full`} />
         </Field>
+        <label className={`flex items-start gap-2 text-[11px] cursor-pointer ${t.soft}`}>
+          <input type="checkbox" checked={noBank} onChange={e => setNoBank(e.target.checked)} className="accent-blue-500 mt-0.5" />
+          <span>Keine Bankbewegung (Abschreiber): rein buchhalterisch, wird im Abgleich herausgerechnet.</span>
+        </label>
         {error && <p className="text-[11px] text-red-400">{error}</p>}
         <div className="flex flex-wrap gap-2 pt-2">
           <button className={t.btnPrimary} onClick={() => onSave(build(), false)}>Speichern</button>
