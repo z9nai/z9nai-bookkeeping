@@ -1,14 +1,13 @@
 import React, { useState } from 'react';
-import { Sun, Moon, FolderOpen, CalendarRange, List, BarChart2, Tags, Upload, Settings } from 'lucide-react';
+import { Sun, Moon, FolderOpen, CalendarRange, List, BarChart2, Tags, Settings } from 'lucide-react';
 import { useStore } from './store';
 import YearView from './components/YearView';
 import BookingsView from './components/BookingsView';
 import OverviewView from './components/OverviewView';
 import CategoriesView from './components/CategoriesView';
-import ImportView from './components/ImportView';
 import AdminView from './components/AdminView';
 
-type View = 'year' | 'bookings' | 'overview' | 'categories' | 'import' | 'admin';
+type View = 'year' | 'bookings' | 'overview' | 'categories' | 'admin';
 
 export default function App() {
   const { isDark, toggleTheme, dirHandle, savedHandleAvailable, pickDirectory, reconnectDirectory, ioError } = useStore();
@@ -56,7 +55,6 @@ export default function App() {
         {navBtn('bookings', List, 'Buchungen')}
         {navBtn('overview', BarChart2, 'Übersicht')}
         {navBtn('categories', Tags, 'Kategorien')}
-        {navBtn('import', Upload, 'Import')}
 
         <div className="ml-auto flex items-center gap-3">
           {navBtn('admin', Settings, 'Admin')}
@@ -120,10 +118,6 @@ export default function App() {
         ) : view === 'categories' ? (
           <div className="flex-1 overflow-y-auto">
             <CategoriesView />
-          </div>
-        ) : view === 'import' ? (
-          <div className="flex-1 overflow-y-auto">
-            <ImportView onDone={openYear} />
           </div>
         ) : (
           <div className="flex-1 overflow-y-auto">

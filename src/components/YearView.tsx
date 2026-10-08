@@ -136,7 +136,7 @@ export default function YearView({ year, setYear, onOpenBookings }: Props) {
       </div>
 
       {categories.length === 0 ? (
-        <p className={`text-xs ${t.muted}`}>Noch keine Kategorien. Lege sie unter «Kategorien» an oder importiere das bestehende Budget-Sheet unter «Import».</p>
+        <p className={`text-xs ${t.muted}`}>Noch keine Kategorien. Lege sie unter «Kategorien» an oder importiere das bestehende Budget-Sheet mit <code>npm run import-xlsx</code>.</p>
       ) : (
         <div className="overflow-x-auto" onMouseLeave={() => setHoverCol(null)}>
           <table className="text-xs min-w-max border-collapse">
